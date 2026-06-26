@@ -307,7 +307,7 @@ public function get_ad_config()
                     ->mixedCase()
                     ->numbers()
                     ->symbols()
-                    ->uncompromised()
+                    // ->uncompromised()
                 ],
                 'password_confirmation' => 'required|same:password'
             ]);
@@ -506,7 +506,7 @@ public function get_ad_config()
                     ->mixedCase()
                     ->numbers()
                     ->symbols()
-                    ->uncompromised()
+                    // ->uncompromised()
                 ],
                 'password_confirmation' => 'required|same:password'
             ]);

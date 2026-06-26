@@ -389,69 +389,83 @@ public function get_ad_config()
 
 
     public function add_user(Request $request)
-    {
-        try {
-            
-          
-            $validator = Validator::make($request->all(), [
-                'first_name' => 'required',
-                'last_name' => 'required',
-                'email' => 'required|email|unique:users,email',
-                'sector' => 'required',
-                'password' => [
-                    'required',
-                    $this->getPasswordRule($request->user_type ?? 'normal')
-                ],
-                'password_confirmation' => 'required|same:password'
-            ]);
-        
-        
-            if ($validator->fails()) {
-                return response()->json([
-                     'status' => "fail",
-                    'message' => 'Validation errors',
-                    'errors' => $validator->errors()
-                ], 422); 
-            }
+{
+    DB::beginTransaction();
 
-            $user = User::create([
-                "email" => $request->email,
-                "password" => Hash::make($request->password),
-                "role" => $request->role,
-                "user_type" => 'normal',
-                "must_change_password" => 1,
-                "password_changed_at" => now(),
-            ]);
+    try {
 
-            $this->addPasswordToHistory($user, $hashedPassword);
+        $validator = Validator::make($request->all(), [
+            'first_name' => 'required',
+            'last_name' => 'required',
+            'email' => 'required|email|unique:users,email',
+            'sector' => 'required',
+            'password' => [
+                'required',
+                $this->getPasswordRule($request->user_type ?? 'normal')
+            ],
+            'password_confirmation' => 'required|same:password'
+        ]);
 
-            $userDetails = new UserDetails();
-            $userDetails->user_id = $user->id;
-            $userDetails->first_name = $request->first_name;
-            $userDetails->last_name = $request->last_name;
-            $userDetails->mobile_no = $request->mobile_no;
-            $userDetails->sector = $request->sector;
-            $userDetails->save();
-
-            $userId = auth('api')->id();
-
-            $date_time = Carbon::now()->format('Y-m-d H:i:s');
-            $auditFunction = new CommonFunctionsController();
-            $auditFunction->document_audit_trail('new user added','user', $userId, $user->id, $date_time, null, null);
-    
+        if ($validator->fails()) {
             return response()->json([
-                'status' => "success",
-                'message' => 'User added'
-            ], 201);
+                'status' => 'fail',
+                'message' => 'Validation errors',
+                'errors' => $validator->errors()
+            ], 422);
+        }
 
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => "fail",
-                'message' => 'Request failed',
-                'error' => $e->getMessage()
-            ], 500);
-        }    
+        $hashedPassword = Hash::make($request->password);
+
+        $user = User::create([
+            'email' => $request->email,
+            'password' => $hashedPassword,
+            'role' => $request->role,
+            'user_type' => 'normal',
+            'must_change_password' => 1,
+            'password_changed_at' => now(),
+        ]);
+
+        $this->addPasswordToHistory($user, $hashedPassword);
+
+        UserDetails::create([
+            'user_id'    => $user->id,
+            'first_name' => $request->first_name,
+            'last_name'  => $request->last_name,
+            'mobile_no'  => $request->mobile_no,
+            'sector'     => $request->sector,
+        ]);
+
+        $userId = auth('api')->id();
+
+        $auditFunction = new CommonFunctionsController();
+        $auditFunction->document_audit_trail(
+            'new user added',
+            'user',
+            $userId,
+            $user->id,
+            now()->format('Y-m-d H:i:s'),
+            null,
+            null
+        );
+
+        DB::commit();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User added'
+        ], 201);
+
+    } catch (\Exception $e) {
+
+        DB::rollBack();
+
+        return response()->json([
+            'status' => 'fail',
+            'message' => 'Request failed',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
     
     public function user_details($id,Request $request)
     {
@@ -1091,8 +1105,8 @@ public function forgot_password(Request $request)
             ->letters()
             ->mixedCase()
             ->numbers()
-            ->symbols()
-            ->uncompromised();
+            ->symbols();
+            // ->uncompromised();
     }
 
     private function isPasswordInHistory($user, $newPassword)
