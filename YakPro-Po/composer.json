@@ -1,0 +1,29 @@
+{
+  "name": "pmdunggh/yakpro-po",
+  "version": "1.0.7",
+  "type": "library",
+  "description": "YAK Pro - Php Obfuscator: A fork from pk-fr/yakpro-po with customize for Ohke framework",
+  "keywords": [
+    "ohke",
+    "obfuscator",
+    "parser"
+  ],
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Pascal KISSIAN",
+      "homepage" : "https://pascal.kissian.net/"
+    },
+    {
+      "name": "Pham Minh Dung",
+      "email": "pmdung@gmail.com"
+    }
+  ],
+  "require": {
+    "php": ">=7.0",
+    "nikic/php-parser": "^4.0"
+  },
+  "bin": [
+    "yakpro-po.php"
+  ]
+}

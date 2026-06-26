@@ -1,0 +1,13 @@
+#-----------------------
+# directories
+#-----------------------
+PHP-Parser/*
+tests/*
+old/*
+output/*
+cached/*
+.idea
+#-----------------------
+# files
+#-----------------------
+run_tests.php

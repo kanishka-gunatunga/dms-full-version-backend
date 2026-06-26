@@ -1,0 +1,31 @@
+Admin
+Email - Rukshan@hnbassurance.com
+Password - NG_J+xd59oR1
+
+Staff
+Email - tharindu.munasinghe@hnbassurance.com
+Password - biqE6w]5Z%&Y_YBo
+
+Email - tharika.jayasuriya@hnbassurance.com
+Password - z(HP{;F75(&!O}QB
+
+Email - tharani.weerasinghe@hnbassurance.com
+Password - luy-w+hE]7Lb+]5+
+
+Email - malshi.viranga@hnbassurance.com
+Password - gsyBnK,(Feee8$r%
+
+Email - dumindu.wasudewa@hnbassurance.com
+Password - -ZnOq0;S!VM%h;8d
+
+Email - sarath.gunapala@hnbassurance.com
+Password - }T6a#-pKnq){@cx#
+
+Email - prameesha.fernando@hnbassurance.com
+Password - I+Sk1OwG^3Sn=c4Z
+
+{
+    "status": "fail",
+    "message": "Request failed",
+    "error": "Unable to connect to host local  at port 0."
+}
