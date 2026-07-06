@@ -30,6 +30,8 @@ class Documents extends Model
         'indexed_or_encrypted',
         'signed_locked_by',
         'signed_lock_expires_at',
+        'is_redacted',
+        'original_document_path',
     ];
 
     public function sharedRoles()

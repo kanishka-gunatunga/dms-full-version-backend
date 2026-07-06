@@ -111,6 +111,8 @@ Route::post('/bulk-delete-documents', [DocumentAPIController::class, 'bulk_delet
 Route::post('/bulk-permanently-delete-documents', [DocumentAPIController::class, 'bulk_permanently_delete_documents'])->middleware('auth:api');
 Route::post('/get-document-text/{id}', [DocumentAPIController::class, 'get_document_text'])->middleware('auth:api');
 Route::get('/view-old-document/{id}', [DocumentAPIController::class, 'view_old_document'])->middleware('auth:api');
+Route::post('/redact-document/{id}', [DocumentAPIController::class, 'redact_document'])->middleware('auth:api');
+Route::post('/undo-redact-document/{id}', [DocumentAPIController::class, 'undo_redact_document'])->middleware('auth:api');
 
 //Reminder Routes
 Route::post('/reminder', [ReminderAPIController::class, 'reminder'])->middleware('auth:api');

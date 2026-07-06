@@ -3922,5 +3922,229 @@ public function document_bulk_send_email(Request $request)
         ], 500);
     }
 }
+
+    public function redact_document(Request $request, $id)
+    {
+        try {
+            $document = Documents::find($id);
+            if (!$document) {
+                return response()->json(['status' => 'fail', 'message' => 'Document not found'], 404);
+            }
+
+            if (!$request->hasFile('file')) {
+                return response()->json(['status' => 'fail', 'message' => 'No file uploaded'], 400);
+            }
+
+            $uploadedFile = $request->file('file');
+            $redactedFileName = time() . '_redacted_' . preg_replace("/[^a-zA-Z0-9\._-]/", "_", basename($document->file_path));
+
+            // Only record original path the FIRST time we redact
+            if ($document->is_redacted == 0 || $document->is_redacted == null) {
+                $document->original_document_path = $document->file_path;
+            }
+
+            // --------------------------------------------------------
+            // DIRECT / BULK upload — stored in Laravel local disk
+            // --------------------------------------------------------
+            if ($document->uploaded_method == 'direct' || $document->uploaded_method == 'bulk') {
+                // Store alongside the original in the same 'documents' folder in local disk
+                $newFilePath = $uploadedFile->storeAs('documents', $redactedFileName, 'local');
+
+                $document->file_path = $newFilePath;
+                $document->is_redacted = 1;
+                $document->save();
+
+            // --------------------------------------------------------
+            // FTP upload — remote FTP server OR a local folder path
+            // --------------------------------------------------------
+            } else {
+                // Resolve FTP account (mirrors the pattern used everywhere else)
+                $ftp_account = Categories::where('id', $document->category)->value('ftp_account');
+                if ($ftp_account == null || $ftp_account == '') {
+                    if (FTPAccounts::where("is_default", 1)->exists()) {
+                        $ftp_account_details = FTPAccounts::where("is_default", 1)->first();
+                    } else {
+                        $ftp_account_details = FTPAccounts::first();
+                    }
+                } else {
+                    $ftp_account_details = FTPAccounts::where("id", $ftp_account)->first();
+                }
+
+                if (!$ftp_account_details) {
+                    return response()->json([
+                        'status' => 'fail',
+                        'message' => 'No FTP account configured for this document\'s category.'
+                    ], 404);
+                }
+
+                $ftp_host     = $ftp_account_details->host;
+                $ftp_username = $ftp_account_details->username;
+                $ftp_password = $ftp_account_details->password;
+                $ftp_root     = $ftp_account_details->root_path;
+                $ftp_port     = $ftp_account_details->port;
+
+                $stream = fopen($uploadedFile->getRealPath(), 'r+');
+                $upload_success = false;
+
+                if (strtolower(trim($ftp_host)) === 'local') {
+                    // Local-path FTP — save file to the same root folder
+                    if (substr($ftp_root, -1) !== DIRECTORY_SEPARATOR) {
+                        $ftp_root .= DIRECTORY_SEPARATOR;
+                    }
+                    $newFilePath = $ftp_root . $redactedFileName;
+                    if (file_put_contents($newFilePath, $stream)) {
+                        $upload_success = true;
+                    }
+                } else {
+                    // Remote FTP server
+                    if (substr($ftp_root, -1) !== '/') {
+                        $ftp_root .= '/';
+                    }
+                    config([
+                        'filesystems.disks.dynamic_ftp' => [
+                            'driver'   => 'ftp',
+                            'host'     => $ftp_host,
+                            'username' => $ftp_username,
+                            'password' => $ftp_password,
+                            'port'     => (int) $ftp_port,
+                            'root'     => $ftp_root,
+                        ],
+                    ]);
+                    // Put the redacted file at the same relative path level (root of FTP)
+                    if (Storage::disk('dynamic_ftp')->put($redactedFileName, $stream)) {
+                        $upload_success = true;
+                    }
+                    $newFilePath = $redactedFileName; // FTP stores paths relative to root
+                }
+
+                fclose($stream);
+
+                if (!$upload_success) {
+                    return response()->json([
+                        'status'  => 'fail',
+                        'message' => 'Failed to save redacted file to storage.'
+                    ], 500);
+                }
+
+                $document->file_path = $newFilePath;
+                $document->is_redacted = 1;
+                $document->save();
+            }
+
+            $auditFunction = new CommonFunctionsController();
+            $auditFunction->document_audit_trail(
+                'document redacted', 'document',
+                auth('api')->id(), $id,
+                Carbon::now()->format('Y-m-d H:i:s'),
+                null, null
+            );
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Document redacted successfully.',
+                'data'    => $document
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => 'fail',
+                'message' => 'Request failed',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function undo_redact_document($id)
+    {
+        try {
+            $document = Documents::find($id);
+            if (!$document) {
+                return response()->json(['status' => 'fail', 'message' => 'Document not found'], 404);
+            }
+
+            if ($document->is_redacted != 1 || empty($document->original_document_path)) {
+                return response()->json(['status' => 'fail', 'message' => 'Document is not redacted'], 400);
+            }
+
+            $redactedPath = $document->file_path;
+
+            // --------------------------------------------------------
+            // Delete the redacted file from wherever it was stored
+            // --------------------------------------------------------
+            if ($document->uploaded_method == 'direct' || $document->uploaded_method == 'bulk') {
+                // Laravel local disk
+                if (Storage::disk('local')->exists($redactedPath)) {
+                    Storage::disk('local')->delete($redactedPath);
+                }
+            } else {
+                // FTP — resolve account
+                $ftp_account = Categories::where('id', $document->category)->value('ftp_account');
+                if ($ftp_account == null || $ftp_account == '') {
+                    if (FTPAccounts::where("is_default", 1)->exists()) {
+                        $ftp_account_details = FTPAccounts::where("is_default", 1)->first();
+                    } else {
+                        $ftp_account_details = FTPAccounts::first();
+                    }
+                } else {
+                    $ftp_account_details = FTPAccounts::where("id", $ftp_account)->first();
+                }
+
+                if ($ftp_account_details) {
+                    $ftp_host = $ftp_account_details->host;
+                    $ftp_root = $ftp_account_details->root_path;
+
+                    if (strtolower(trim($ftp_host)) === 'local') {
+                        // Local-path FTP
+                        if (file_exists($redactedPath)) {
+                            unlink($redactedPath);
+                        }
+                    } else {
+                        $ftp_root = rtrim($ftp_account_details->root_path, '/') . '/';
+                        config([
+                            'filesystems.disks.dynamic_ftp' => [
+                                'driver'   => 'ftp',
+                                'host'     => $ftp_host,
+                                'username' => $ftp_account_details->username,
+                                'password' => $ftp_account_details->password,
+                                'port'     => (int) $ftp_account_details->port,
+                                'root'     => $ftp_root,
+                            ],
+                        ]);
+                        $disk = Storage::disk('dynamic_ftp');
+                        if ($disk->exists($redactedPath)) {
+                            $disk->delete($redactedPath);
+                        }
+                    }
+                }
+            }
+
+            // Restore original path
+            $document->file_path = $document->original_document_path;
+            $document->is_redacted = 0;
+            $document->original_document_path = null;
+            $document->save();
+
+            $auditFunction = new CommonFunctionsController();
+            $auditFunction->document_audit_trail(
+                'undo document redaction', 'document',
+                auth('api')->id(), $id,
+                Carbon::now()->format('Y-m-d H:i:s'),
+                null, null
+            );
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Redaction undone successfully.',
+                'data'    => $document
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status'  => 'fail',
+                'message' => 'Request failed',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
 }
 
