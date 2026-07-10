@@ -150,7 +150,8 @@ class DocumentAPIController extends Controller
         }
        
 
-       
+        $indexFileTextContent = new CommonFunctionsController();
+        $indexFileTextContent->indexDocumentContent($document->id, $content);
         
         return response()->json([
             'status' => "success",
@@ -4064,6 +4065,15 @@ public function document_bulk_send_email(Request $request)
 
             if ($document->is_redacted != 1 || empty($document->original_document_path)) {
                 return response()->json(['status' => 'fail', 'message' => 'Document is not redacted'], 400);
+            }
+
+            $latestRedaction = \App\Models\DocumentAuditTrial::where('changed_source', $id)
+                ->where('operation', 'document redacted')
+                ->orderBy('id', 'desc')
+                ->first();
+
+            if ($latestRedaction && $latestRedaction->user != auth('api')->id()) {
+                return response()->json(['status' => 'fail', 'message' => 'Only the user who redacted the document can undo it.'], 403);
             }
 
             $redactedPath = $document->file_path;
