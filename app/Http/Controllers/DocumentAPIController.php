@@ -3617,78 +3617,84 @@ public function renew_document(Request $request)
 
                 if (file_exists($signaturePath)) {
 
-                    $ftp_account = \App\Models\Categories::where('id', $document->category)->value('ftp_account');
-
-                    // Resolve FTP account (same logic as retrieve_document)
-                    if (!$ftp_account) {
-                        if (\App\Models\FTPAccounts::where("is_default", 1)->exists()) {
-                            $ftp_account_details = \App\Models\FTPAccounts::where("is_default", 1)->first();
-                        } else {
-                            $ftp_account_details = \App\Models\FTPAccounts::first();
-                        }
-                    } else {
-                        $ftp_account_details = \App\Models\FTPAccounts::where("id", $ftp_account)->first();
-                    }
-
-                    if (!$ftp_account_details) {
-                        return response()->json([
-                            'status' => 'fail',
-                            'message' => 'No FTP account configured'
-                        ], 404);
-                    }
-
                     $localDisk = \Storage::disk('local');
-
                     $filePath = $document->file_path;
                     $localFilePath = null;
+                    $isLaravelStorage = false;
 
-                    // =========================
-                    // LOCAL SERVER FILE
-                    // =========================
-                    if (strtolower(trim($ftp_account_details->host)) === 'local') {
+                    if ($document->uploaded_method == 'ftp') {
+                        $ftp_account = \App\Models\Categories::where('id', $document->category)->value('ftp_account');
 
-                        $basePath = rtrim($ftp_account_details->root_path, DIRECTORY_SEPARATOR);
-
-                        $fullPath = $basePath . DIRECTORY_SEPARATOR . ltrim($filePath, '/\\');
-
-                        if (file_exists($filePath)) {
-                            $localDisk->put(basename($filePath), file_get_contents($filePath));
-                        } elseif (file_exists($fullPath)) {
-                            $localDisk->put(basename($filePath), file_get_contents($fullPath));
+                        // Resolve FTP account
+                        if (!$ftp_account) {
+                            if (\App\Models\FTPAccounts::where("is_default", 1)->exists()) {
+                                $ftp_account_details = \App\Models\FTPAccounts::where("is_default", 1)->first();
+                            } else {
+                                $ftp_account_details = \App\Models\FTPAccounts::first();
+                            }
+                        } else {
+                            $ftp_account_details = \App\Models\FTPAccounts::where("id", $ftp_account)->first();
                         }
 
-                        $localFilePath = storage_path('app/private/' . basename($filePath));
-                    }
+                        if (!$ftp_account_details) {
+                            return response()->json([
+                                'status' => 'fail',
+                                'message' => 'No FTP account configured'
+                            ], 404);
+                        }
 
-                    // =========================
-                    // FTP FILE
-                    // =========================
-                    else {
+                        // =========================
+                        // LOCAL SERVER FILE
+                        // =========================
+                        if (strtolower(trim($ftp_account_details->host)) === 'local') {
 
-                        $ftp_host = $ftp_account_details->host;
-                        $ftp_username = $ftp_account_details->username;
-                        $ftp_password = $ftp_account_details->password;
-                        $ftp_root = rtrim($ftp_account_details->root_path, '/') . '/';
-                        $ftp_port = $ftp_account_details->port;
+                            $basePath = rtrim($ftp_account_details->root_path, DIRECTORY_SEPARATOR);
+                            $fullPath = $basePath . DIRECTORY_SEPARATOR . ltrim($filePath, '/\\');
 
-                        config([
-                            'filesystems.disks.dynamic_ftp' => [
-                                'driver' => 'ftp',
-                                'host' => $ftp_host,
-                                'username' => $ftp_username,
-                                'password' => $ftp_password,
-                                'port' => (int) $ftp_port,
-                                'root' => $ftp_root,
-                            ],
-                        ]);
+                            if (file_exists($filePath)) {
+                                $localDisk->put(basename($filePath), file_get_contents($filePath));
+                            } elseif (file_exists($fullPath)) {
+                                $localDisk->put(basename($filePath), file_get_contents($fullPath));
+                            }
 
-                        $disk = \Storage::disk('dynamic_ftp');
+                            $localFilePath = storage_path('app/private/' . basename($filePath));
+                        }
+                        // =========================
+                        // FTP FILE
+                        // =========================
+                        else {
+                            $ftp_host = $ftp_account_details->host;
+                            $ftp_username = $ftp_account_details->username;
+                            $ftp_password = $ftp_account_details->password;
+                            $ftp_root = rtrim($ftp_account_details->root_path, '/') . '/';
+                            $ftp_port = $ftp_account_details->port;
 
-                        $tempName = 'temp_sign_' . $document->id . '_' . time() . '.pdf';
+                            config([
+                                'filesystems.disks.dynamic_ftp' => [
+                                    'driver' => 'ftp',
+                                    'host' => $ftp_host,
+                                    'username' => $ftp_username,
+                                    'password' => $ftp_password,
+                                    'port' => (int) $ftp_port,
+                                    'root' => $ftp_root,
+                                ],
+                            ]);
 
-                        $localDisk->put($tempName, $disk->get($filePath));
+                            $disk = \Storage::disk('dynamic_ftp');
 
-                        $localFilePath = storage_path('app/private/' . $tempName);
+                            $tempName = 'temp_sign_' . $document->id . '_' . time() . '.pdf';
+                            $localDisk->put($tempName, $disk->get($filePath));
+                            $localFilePath = storage_path('app/private/' . $tempName);
+                        }
+                    } else {
+                        // Laravel Storage (direct/bulk)
+                        $isLaravelStorage = true;
+                        $originalPath = storage_path('app/private/' . $filePath);
+                        if (file_exists($originalPath)) {
+                            $tempName = 'temp_sign_' . $document->id . '_' . time() . '.pdf';
+                            $localDisk->put($tempName, file_get_contents($originalPath));
+                            $localFilePath = storage_path('app/private/' . $tempName);
+                        }
                     }
 
                     // =========================
@@ -3723,9 +3729,19 @@ public function renew_document(Request $request)
 
                         $pdf->Output('F', $localFilePath);
 
-                        // push back to FTP if needed
-                        if (isset($disk)) {
+                        // push back to storage
+                        if ($isLaravelStorage) {
+                            file_put_contents(storage_path('app/private/' . $filePath), file_get_contents($localFilePath));
+                            @unlink($localFilePath);
+                        } elseif (isset($disk)) {
                             $disk->put($filePath, file_get_contents($localFilePath));
+                            @unlink($localFilePath);
+                        } else {
+                            if (file_exists($filePath)) {
+                                file_put_contents($filePath, file_get_contents($localFilePath));
+                            } elseif (isset($fullPath) && file_exists($fullPath)) {
+                                file_put_contents($fullPath, file_get_contents($localFilePath));
+                            }
                         }
                     }
                 }
