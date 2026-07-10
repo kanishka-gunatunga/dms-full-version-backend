@@ -3606,7 +3606,7 @@ public function renew_document(Request $request)
             return response()->json(['status' => 'fail', 'message' => 'Already signed'], 400);
         }
 
-        if (strtolower($document->type) === 'pdf') {
+        if (strtolower($document->type) === 'pdf' || strtolower($document->type) === 'application/pdf') {
 
             $signatures = json_decode($request->input('signatures'), true);
             $userDetails = \App\Models\UserDetails::where('user_id', $user->id)->first();
