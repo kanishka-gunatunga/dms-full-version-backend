@@ -15,7 +15,8 @@ class DocumentSignature extends Model
     
     protected $fillable = [
         'document_id',
-        'user_id'
+        'user_id',
+        'ip_address'
     ];
 
     public function document()

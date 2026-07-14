@@ -3752,6 +3752,8 @@ public function renew_document(Request $request)
         $signature = new DocumentSignature();
         $signature->document_id = $id;
         $signature->user_id = $user->id;
+        $signature->ip_address = $request->ip();
+        $signature->is_marked_as_signed = $request->input('is_marked_as_signed') == 'true' || $request->input('is_marked_as_signed') == 1 ? 1 : 0;
         $signature->save();
 
         // clear lock
@@ -4169,6 +4171,176 @@ public function document_bulk_send_email(Request $request)
                 'status'  => 'fail',
                 'message' => 'Request failed',
                 'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+    public function document_sign_history($id)
+    {
+        try {
+            $user = auth('api')->user();
+            if (!$user) {
+                return response()->json(['status' => 'fail', 'message' => 'Unauthorized'], 401);
+            }
+
+            $document = Documents::find($id);
+            if (!$document) {
+                return response()->json(['status' => 'fail', 'message' => 'Document not found'], 404);
+            }
+
+            $signatures = DocumentSignature::with('user')->where('document_id', $id)->get();
+
+            $pdf = new \FPDF();
+            $pdf->AddPage();
+            $pdf->SetFont('Arial', 'B', 16);
+            $pdf->Cell(0, 10, 'Sign History: ' . $document->name, 0, 1, 'C');
+            $pdf->Ln(5);
+
+            $pdf->SetFont('Arial', 'B', 12);
+            $pdf->Cell(50, 10, 'Name', 1);
+            $pdf->Cell(30, 10, 'Date', 1);
+            $pdf->Cell(25, 10, 'Time', 1);
+            $pdf->Cell(45, 10, 'IP Address', 1);
+            $pdf->Cell(40, 10, 'Status', 1);
+            $pdf->Ln();
+
+            $pdf->SetFont('Arial', '', 12);
+            foreach ($signatures as $sig) {
+                $name = $sig->user ? $sig->user->first_name . ' ' . $sig->user->last_name : 'Unknown';
+                $date = $sig->created_at->format('Y-m-d');
+                $time = $sig->created_at->format('H:i:s');
+                $ip = $sig->ip_address ?? 'N/A';
+                $status = $sig->is_marked_as_signed ? 'Marked as Signed' : 'Signed';
+
+                $pdf->Cell(50, 10, $name, 1);
+                $pdf->Cell(30, 10, $date, 1);
+                $pdf->Cell(25, 10, $time, 1);
+                $pdf->Cell(45, 10, $ip, 1);
+                $pdf->Cell(40, 10, $status, 1);
+                $pdf->Ln();
+            }
+
+            $fileName = 'sign_history_' . $document->id . '_' . time() . '.pdf';
+            $filePath = public_path('uploads/document_previews/' . $fileName);
+            
+            if (!file_exists(public_path('uploads/document_previews'))) {
+                mkdir(public_path('uploads/document_previews'), 0777, true);
+            }
+
+            $pdf->Output('F', $filePath);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => asset('uploads/document_previews/' . $fileName),
+                'type' => 'pdf',
+                'name' => 'Sign_History_' . $document->name
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'fail',
+                'message' => 'Request failed',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    public function document_sign_status($id)
+    {
+        try {
+            $user = auth('api')->user();
+            if (!$user) {
+                return response()->json(['status' => 'fail', 'message' => 'Unauthorized'], 401);
+            }
+
+            $document = Documents::find($id);
+            if (!$document) {
+                return response()->json(['status' => 'fail', 'message' => 'Document not found'], 404);
+            }
+
+            $category = Categories::find($document->category);
+            $signingUsers = [];
+            $signingRoles = [];
+            
+            if ($category) {
+                $signingUsers = is_string($category->signing_users) ? json_decode($category->signing_users, true) : (array)$category->signing_users;
+                $signingRoles = is_string($category->signing_roles) ? json_decode($category->signing_roles, true) : (array)$category->signing_roles;
+            }
+
+            $allUsers = UserDetails::with('user')->get();
+            $assignedUsers = [];
+
+            foreach ($allUsers as $userDetails) {
+                $sysUser = $userDetails->user;
+                if (!$sysUser) continue;
+
+                $isAssigned = false;
+                
+                if (!empty($signingUsers) && in_array((string)$sysUser->id, (array)$signingUsers)) {
+                    $isAssigned = true;
+                } else if (!empty($signingRoles)) {
+                    $userRoleIds = [];
+                    try {
+                        $userRoleIds = $sysUser->roles->pluck('id')->toArray();
+                    } catch (\Exception $e) {}
+                    
+                    if (!empty($sysUser->role)) {
+                        $decodedRoles = is_string($sysUser->role) ? json_decode($sysUser->role, true) : (array)$sysUser->role;
+                        if (is_array($decodedRoles)) {
+                            $userRoleIds = array_merge($userRoleIds, $decodedRoles);
+                        } else {
+                            $userRoleIds[] = $sysUser->role;
+                        }
+                    }
+                    $userRoleIds = array_unique(array_filter($userRoleIds));
+                    
+                    foreach ($userRoleIds as $roleId) {
+                        if (in_array((string)$roleId, (array)$signingRoles)) {
+                            $isAssigned = true;
+                            break;
+                        }
+                    }
+                }
+
+                if ($isAssigned) {
+                    $assignedUsers[] = $userDetails;
+                }
+            }
+
+            $signatures = DocumentSignature::where('document_id', $id)->get()->keyBy('user_id');
+
+            $result = [];
+            foreach ($assignedUsers as $userDetails) {
+                $userId = $userDetails->user_id;
+                $sig = $signatures->get($userId);
+                
+                if ($sig) {
+                    $status = 'Signed';
+                    $signOption = $sig->is_marked_as_signed ? 'Marked' : 'Signature';
+                    $date = $sig->created_at ? $sig->created_at->format('Y-m-d H:i:s') : null;
+                } else {
+                    $status = 'Not Signed';
+                    $signOption = '-';
+                    $date = null;
+                }
+
+                $result[] = [
+                    'user_id' => $userId,
+                    'name' => trim($userDetails->first_name . ' ' . $userDetails->last_name),
+                    'status' => $status,
+                    'sign_option' => $signOption,
+                    'date' => $date
+                ];
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $result
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'fail',
+                'message' => 'Request failed',
+                'error' => $e->getMessage()
             ], 500);
         }
     }

@@ -209,5 +209,7 @@ Route::get('/pending-signatures', [DocumentAPIController::class, 'pending_signat
 Route::get('/view-sign-document/{id}', [DocumentAPIController::class, 'view_sign_document'])->middleware('auth:api');
 Route::post('/sign-document/{id}', [DocumentAPIController::class, 'sign_document'])->middleware('auth:api');
 Route::get('/signed-documents', [DocumentAPIController::class, 'signed_documents'])->middleware('auth:api');
+Route::get('/document-sign-history/{id}', [DocumentAPIController::class, 'document_sign_history'])->middleware('auth:api');
+Route::get('/document-sign-status/{id}', [DocumentAPIController::class, 'document_sign_status'])->middleware('auth:api');
 Route::post('/update-signature', [UserAPIController::class, 'update_signature'])->middleware('auth:api');
 Route::get('/get-signature', [UserAPIController::class, 'get_signature'])->middleware('auth:api');
