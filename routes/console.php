@@ -12,10 +12,17 @@ Artisan::command('inspire', function () {
 
 Schedule::call(function () {
     $today = Carbon::now();
-    $expiredDocuments = Documents::where('expiration_date', '<', $today)->where('uploaded_method','direct')->get();
+    $expiredDocuments = Documents::where('expiration_date', '<', $today)
+        ->where('uploaded_method', 'direct')
+        ->where('force_archive', 1)
+        ->where(function ($q) {
+            $q->where('is_archived', 0)->orWhereNull('is_archived');
+        })
+        ->get();
     foreach ($expiredDocuments as $document) {
-        $document->delete();
-        $this->info("Deleted document: {$document->name}");
+        $document->is_archived = 1;
+        $document->save();
+        $this->info("Archived document: {$document->name}");
     }
 })->daily();
 Schedule::command('ad:sync-users')

@@ -27,6 +27,7 @@ class Documents extends Model
         'uploaded_method',
         'attributes',
         'expiration_date',
+        'force_archive',
         'indexed_or_encrypted',
         'signed_locked_by',
         'signed_lock_expires_at',

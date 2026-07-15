@@ -73,6 +73,7 @@ Route::get('/roles', [RoleAPIController::class, 'roles'])->middleware('auth:api'
 
 //Document Routes
 Route::post('/add-document', [DocumentAPIController::class, 'add_document'])->middleware('auth:api');
+Route::post('/confirm-archive/{id}', [DocumentAPIController::class, 'confirmArchive'])->middleware('auth:api');
 Route::match(['get', 'post'],'/edit-document/{id}', [DocumentAPIController::class, 'edit_document'])->middleware('auth:api');
 Route::get('/delete-document/{id}/{user}', [DocumentAPIController::class, 'delete_document'])->middleware('auth:api');
 Route::get('/documents', [DocumentAPIController::class, 'documents'])->middleware('auth:api');

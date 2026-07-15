@@ -100,6 +100,29 @@ class DashboardController extends Controller
                         ];
                     });
     
+                // --- PENDING ARCHIVE DOCUMENTS ---
+                $pendingArchiveDocuments = Documents::with(['category_data', 'sector'])
+                    ->where('indexed_or_encrypted', 'yes')
+                    ->whereNotNull('expiration_date')
+                    ->where('expiration_date', '<', now())
+                    ->where('force_archive', 0)
+                    ->where(function ($q) {
+                        $q->where('is_archived', 0)->orWhereNull('is_archived');
+                    })
+                    ->get()
+                    ->map(function ($doc) {
+                        return [
+                            'id' => $doc->id,
+                            'name' => $doc->name,
+                            'category_id' => $doc->category_data->id ?? null,
+                            'category_name' => $doc->category_data->category_name ?? 'Uncategorized',
+                            'sector_id' => $doc->sector->id ?? null,
+                            'sector_name' => $doc->sector->sector_name ?? 'N/A',
+                            'expiration_date' => $doc->expiration_date,
+                            'days_expired' => (int) \Carbon\Carbon::now()->diffInDays(\Carbon\Carbon::parse($doc->expiration_date), false),
+                        ];
+                    });
+
                 // --- RESPONSE ---
                 return response()->json([
                     'status' => 'success',
@@ -110,6 +133,7 @@ class DashboardController extends Controller
                     'documents_by_category' => $category_distribution,
                     'documents_by_sector' => $sector_distribution,
                     'near_expiry_documents' => $nearExpiryDocuments,
+                    'pending_archive_documents' => $pendingArchiveDocuments,
                 ]);
             }
     
@@ -252,7 +276,28 @@ public function user_dashboard_data(Request $request)
                         'expiration_date' => $doc->expiration_date,
                         'days_to_expire' => (int) \Carbon\Carbon::now()->diffInDays(\Carbon\Carbon::parse($doc->expiration_date), false),
                     ];
-                });    
+                });
+
+                $pendingArchiveDocuments = $assigned_documents
+                ->load('sector')
+                ->filter(function ($doc) {
+                    return $doc->expiration_date && 
+                           \Carbon\Carbon::parse($doc->expiration_date)->isPast() &&
+                           $doc->force_archive == 0;
+                })
+                ->map(function ($doc) {
+                    return [
+                        'id' => $doc->id,
+                        'document_name' => $doc->name,
+                        'category_id' => $doc->category_data->id ?? null,
+                        'category_name' => $doc->category_data->category_name ?? 'Uncategorized',
+                        'sector_id' => $doc->sector->id ?? null,
+                        'sector_name' => $doc->sector->sector_name ?? 'N/A',
+                        'expiration_date' => $doc->expiration_date,
+                        'days_expired' => (int) \Carbon\Carbon::now()->diffInDays(\Carbon\Carbon::parse($doc->expiration_date), false),
+                    ];
+                });
+
             // ✅ Return JSON response
             return response()->json([
                 'status' => 'success',
@@ -266,6 +311,7 @@ public function user_dashboard_data(Request $request)
                 'assigned_documents' => $formatted_assigned_documents,
                 'category_distribution' => $category_stats,
                 'near_expiry_documents' => $nearExpiryDocuments,
+                'pending_archive_documents' => $pendingArchiveDocuments,
             ]);
         }
     } catch (\Exception $e) {

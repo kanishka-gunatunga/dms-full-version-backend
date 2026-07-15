@@ -106,6 +106,7 @@ class DocumentAPIController extends Controller
             $document->uploaded_method = 'direct';
             $document->attributes = $request->attribute_data;
             $document->expiration_date = $request->expiration_date;
+            $document->force_archive = $request->force_archive == '1' ? 1 : 0;
             $document->indexed_or_encrypted = 'yes';
             $document->save(); 
            
@@ -165,6 +166,32 @@ class DocumentAPIController extends Controller
         ], 500);
     }
 }
+
+    public function confirmArchive($id, Request $request)
+    {
+        try {
+            $document = Documents::find($id);
+            if ($document) {
+                $document->is_archived = 1;
+                $document->save();
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Document archived successfully'
+                ], 200);
+            }
+            return response()->json([
+                'status' => 'fail',
+                'message' => 'Document not found'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'fail',
+                'message' => 'Request failed',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function edit_document($id,Request $request)
     {
          
