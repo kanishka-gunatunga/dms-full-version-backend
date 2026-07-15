@@ -19,7 +19,6 @@ class Categories extends Model
         'template',
         'ftp_account',
         'status',
-        'signing_roles',
         'signing_users'
     ];
 

@@ -47,9 +47,6 @@ public function add_category(Request $request)
         if ($request->filled('ftp_account')) {
             $category->ftp_account = $request->ftp_account;
         }
-         if ($request->has('signing_roles')) {
-            $category->signing_roles = $request->signing_roles;
-        }
         if ($request->has('signing_users')) {
             $category->signing_users = $request->signing_users;
         }
@@ -271,9 +268,6 @@ public function category_details($id, Request $request)
             if ($request->filled('ftp_account')) {
                 $category->ftp_account = $request->ftp_account;
             }
-              if ($request->has('signing_roles')) {
-                $category->signing_roles = $request->signing_roles;
-            }
             if ($request->has('signing_users')) {
                 $category->signing_users = $request->signing_users;
             }
@@ -334,7 +328,7 @@ public function delete_category($id,Request $request)
          
         try {
             if($request->isMethod('get')){
-                $categories = Categories::where('status','active')->select('id', 'parent_category', 'category_name', 'template', 'status', 'signing_roles', 'signing_users')->get();
+                $categories = Categories::where('status','active')->select('id', 'parent_category', 'category_name', 'template', 'status', 'signing_users')->get();
                 foreach ($categories as $category) {
                     $category->template = asset('uploads/excel_templates/'.$category->template.'') ?? null;
                 }
@@ -355,7 +349,7 @@ public function delete_category($id,Request $request)
     {
         try {
             if($request->isMethod('get')){
-                $categories = Categories::where('status','active')->select('id', 'parent_category', 'category_name', 'template', 'status', 'signing_roles', 'signing_users')->get();
+                $categories = Categories::where('status','active')->select('id', 'parent_category', 'category_name', 'template', 'status', 'signing_users')->get();
 
                 $categoryMap = [];
                 foreach ($categories as $category) {
@@ -366,7 +360,6 @@ public function delete_category($id,Request $request)
                         'children' => [],
                         'template' => $category->template ? asset('uploads/excel_templates/'.$category->template) : null,
                         'status' => $category->status,
-                        'signing_roles' => $category->signing_roles,
                         'signing_users' => $category->signing_users,
                     ];
                 }

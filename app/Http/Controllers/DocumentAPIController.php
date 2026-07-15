@@ -3447,31 +3447,36 @@ public function renew_document(Request $request)
 
             $userId = $user->id;
             
-            $roleIds = [];
-            try {
-                $roleIds = $user->roles->pluck('id')->toArray();
-            } catch (\Exception $e) {
-                // Ignore if the pivot table or relation doesn't exist
+                        // NEW LOGIC: Check levels
+            $categories = \App\Models\Categories::whereNotNull('signing_users')->get(['id', 'signing_users']);
+            $assignedCategoriesData = [];
+            
+            foreach ($categories as $category) {
+                $signingLevels = json_decode($category->signing_users, true);
+                if (!is_array($signingLevels)) continue;
+                
+                $userLevel = null;
+                $previousLevelUsers = [];
+                
+                foreach ($signingLevels as $levelObj) {
+                    if (isset($levelObj['users']) && is_array($levelObj['users'])) {
+                        if (in_array((string)$userId, $levelObj['users'])) {
+                            $userLevel = $levelObj['level'];
+                            break;
+                        } else {
+                            $previousLevelUsers = array_merge($previousLevelUsers, $levelObj['users']);
+                        }
+                    }
+                }
+                
+                if ($userLevel !== null) {
+                    $assignedCategoriesData[$category->id] = array_unique($previousLevelUsers);
+                }
             }
             
-            if (!empty($user->role)) {
-                $decodedRoles = is_string($user->role) ? json_decode($user->role, true) : (array)$user->role;
-                if (is_array($decodedRoles)) {
-                    $roleIds = array_merge($roleIds, $decodedRoles);
-                } else {
-                    $roleIds[] = $user->role;
-                }
-            }
-            $roleIds = array_unique(array_filter($roleIds));
+            $assignedCategoryIds = array_keys($assignedCategoriesData);
 
-            $assignedCategories = Categories::where(function($query) use ($userId, $roleIds) {
-                $query->whereJsonContains('signing_users', (string)$userId);
-                foreach($roleIds as $roleId) {
-                    $query->orWhereJsonContains('signing_roles', (string)$roleId);
-                }
-            })->pluck('id');
-
-            $documents = Documents::whereIn('category', $assignedCategories)
+            $documentsQuery = \App\Models\Documents::whereIn('category', $assignedCategoryIds)
                 ->where(function ($query) {
                     $query->where('is_archived', 0)
                           ->orWhereNull('is_archived');
@@ -3486,6 +3491,43 @@ public function renew_document(Request $request)
                     $query->select('id', 'category_name');
                 }])
                 ->get();
+                
+            $filteredDocuments = [];
+            
+            if ($documentsQuery->count() > 0) {
+                $documentIds = $documentsQuery->pluck('id')->toArray();
+                
+                $allSignatures = \App\Models\DocumentSignature::whereIn('document_id', $documentIds)
+                    ->get(['document_id', 'user_id'])
+                    ->groupBy('document_id');
+                    
+                foreach ($documentsQuery as $document) {
+                    $previousUsersRequired = $assignedCategoriesData[$document->category] ?? [];
+                    
+                    if (empty($previousUsersRequired)) {
+                        $filteredDocuments[] = $document;
+                        continue;
+                    }
+                    
+                    $documentSignatures = isset($allSignatures[$document->id]) 
+                        ? $allSignatures[$document->id]->pluck('user_id')->map(function($id) { return (string)$id; })->toArray() 
+                        : [];
+                        
+                    $allPreviousSigned = true;
+                    foreach ($previousUsersRequired as $reqUserId) {
+                        if (!in_array((string)$reqUserId, $documentSignatures)) {
+                            $allPreviousSigned = false;
+                            break;
+                        }
+                    }
+                    
+                    if ($allPreviousSigned) {
+                        $filteredDocuments[] = $document;
+                    }
+                }
+            }
+            
+            $documents = collect($filteredDocuments);
 
             $auditData = DocumentAuditTrial::whereIn('changed_source', $documents->pluck('id'))
                 ->where('operation', 'document added')
@@ -4195,26 +4237,44 @@ public function document_bulk_send_email(Request $request)
             $pdf->Cell(0, 10, 'Sign History: ' . $document->name, 0, 1, 'C');
             $pdf->Ln(5);
 
+            $category = \App\Models\Categories::find($document->category);
+            $userLevelsMap = [];
+            if ($category) {
+                $signingLevels = is_string($category->signing_users) ? json_decode($category->signing_users, true) : (array)$category->signing_users;
+                if (is_array($signingLevels)) {
+                    foreach ($signingLevels as $levelObj) {
+                        if (isset($levelObj['users']) && is_array($levelObj['users']) && isset($levelObj['level'])) {
+                            foreach ($levelObj['users'] as $uId) {
+                                $userLevelsMap[(string)$uId] = $levelObj['level'];
+                            }
+                        }
+                    }
+                }
+            }
+
             $pdf->SetFont('Arial', 'B', 12);
-            $pdf->Cell(50, 10, 'Name', 1);
-            $pdf->Cell(30, 10, 'Date', 1);
+            $pdf->Cell(45, 10, 'Name', 1);
+            $pdf->Cell(15, 10, 'Level', 1);
+            $pdf->Cell(25, 10, 'Date', 1);
             $pdf->Cell(25, 10, 'Time', 1);
-            $pdf->Cell(45, 10, 'IP Address', 1);
+            $pdf->Cell(40, 10, 'IP Address', 1);
             $pdf->Cell(40, 10, 'Status', 1);
             $pdf->Ln();
 
             $pdf->SetFont('Arial', '', 12);
             foreach ($signatures as $sig) {
                 $name = $sig->user ? $sig->user->first_name . ' ' . $sig->user->last_name : 'Unknown';
+                $level = $userLevelsMap[(string)$sig->user_id] ?? '-';
                 $date = $sig->created_at->format('Y-m-d');
                 $time = $sig->created_at->format('H:i:s');
                 $ip = $sig->ip_address ?? 'N/A';
                 $status = $sig->is_marked_as_signed ? 'Marked as Signed' : 'Signed';
 
-                $pdf->Cell(50, 10, $name, 1);
-                $pdf->Cell(30, 10, $date, 1);
+                $pdf->Cell(45, 10, substr($name, 0, 20), 1);
+                $pdf->Cell(15, 10, $level, 1);
+                $pdf->Cell(25, 10, $date, 1);
                 $pdf->Cell(25, 10, $time, 1);
-                $pdf->Cell(45, 10, $ip, 1);
+                $pdf->Cell(40, 10, $ip, 1);
                 $pdf->Cell(40, 10, $status, 1);
                 $pdf->Ln();
             }
@@ -4256,56 +4316,28 @@ public function document_bulk_send_email(Request $request)
                 return response()->json(['status' => 'fail', 'message' => 'Document not found'], 404);
             }
 
-            $category = Categories::find($document->category);
-            $signingUsers = [];
-            $signingRoles = [];
+            $category = \App\Models\Categories::find($document->category);
+            $signingLevels = [];
             
             if ($category) {
-                $signingUsers = is_string($category->signing_users) ? json_decode($category->signing_users, true) : (array)$category->signing_users;
-                $signingRoles = is_string($category->signing_roles) ? json_decode($category->signing_roles, true) : (array)$category->signing_roles;
+                $signingLevels = is_string($category->signing_users) ? json_decode($category->signing_users, true) : (array)$category->signing_users;
             }
 
-            $allUsers = UserDetails::with('user')->get();
-            $assignedUsers = [];
-
-            foreach ($allUsers as $userDetails) {
-                $sysUser = $userDetails->user;
-                if (!$sysUser) continue;
-
-                $isAssigned = false;
-                
-                if (!empty($signingUsers) && in_array((string)$sysUser->id, (array)$signingUsers)) {
-                    $isAssigned = true;
-                } else if (!empty($signingRoles)) {
-                    $userRoleIds = [];
-                    try {
-                        $userRoleIds = $sysUser->roles->pluck('id')->toArray();
-                    } catch (\Exception $e) {}
-                    
-                    if (!empty($sysUser->role)) {
-                        $decodedRoles = is_string($sysUser->role) ? json_decode($sysUser->role, true) : (array)$sysUser->role;
-                        if (is_array($decodedRoles)) {
-                            $userRoleIds = array_merge($userRoleIds, $decodedRoles);
-                        } else {
-                            $userRoleIds[] = $sysUser->role;
-                        }
-                    }
-                    $userRoleIds = array_unique(array_filter($userRoleIds));
-                    
-                    foreach ($userRoleIds as $roleId) {
-                        if (in_array((string)$roleId, (array)$signingRoles)) {
-                            $isAssigned = true;
-                            break;
+            $userLevelsMap = [];
+            if (is_array($signingLevels)) {
+                foreach ($signingLevels as $levelObj) {
+                    if (isset($levelObj['users']) && is_array($levelObj['users']) && isset($levelObj['level'])) {
+                        foreach ($levelObj['users'] as $uId) {
+                            $userLevelsMap[(string)$uId] = $levelObj['level'];
                         }
                     }
                 }
-
-                if ($isAssigned) {
-                    $assignedUsers[] = $userDetails;
-                }
             }
 
-            $signatures = DocumentSignature::where('document_id', $id)->get()->keyBy('user_id');
+            $assignedUserIds = array_keys($userLevelsMap);
+            $assignedUsers = \App\Models\UserDetails::with('user')->whereIn('user_id', $assignedUserIds)->get();
+
+            $signatures = \App\Models\DocumentSignature::where('document_id', $id)->get()->keyBy('user_id');
 
             $result = [];
             foreach ($assignedUsers as $userDetails) {
@@ -4327,9 +4359,14 @@ public function document_bulk_send_email(Request $request)
                     'name' => trim($userDetails->first_name . ' ' . $userDetails->last_name),
                     'status' => $status,
                     'sign_option' => $signOption,
-                    'date' => $date
+                    'date' => $date,
+                    'level' => $userLevelsMap[(string)$userId] ?? null
                 ];
             }
+
+            usort($result, function($a, $b) {
+                return ($a['level'] ?? 999) <=> ($b['level'] ?? 999);
+            });
 
             return response()->json([
                 'status' => 'success',
