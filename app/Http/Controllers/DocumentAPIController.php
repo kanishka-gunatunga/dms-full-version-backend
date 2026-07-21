@@ -117,7 +117,6 @@ class DocumentAPIController extends Controller
             $version = new DocumentVersions();
             $version->document_id = $document->id;
             $version->type = $file_extension;
-            $document->document_preview = 'uploads/document_previews/' . $preview_name;
             $version->file_path = $filePath;
             $version->date_time = $date_time;
             $version->user = $request->user;
@@ -2825,28 +2824,41 @@ public function deep_search(Request $request)
     try {
         if ($request->isMethod('post')) {
             $query = $request->term;
-    
-            // $client = new Client(env('MEILISEARCH_HOST'), env('MEILISEARCH_KEY'));
-            // $index = $client->index(env('MEILISEARCH_INDEX'));
-            // $searchResults = $index->search($query, [
-            //     'attributesToHighlight' => ['content'],
-            //     'showMatchesPosition' => true,
-            // ])->getHits();
+
             $client = new Client(env('MEILISEARCH_HOST'), env('MEILISEARCH_KEY'));
             $index = $client->index(env('MEILISEARCH_INDEX'));
-            // $index->updateSettings([
-            //     'filterableAttributes' => ['content'],
-            // ]);
-            
-            // $searchResults = $index->search($query, [
+           
+            // $searchResults = $index->search('"' . $query . '"', [ 
             //     'attributesToHighlight' => ['content'],
             //     'showMatchesPosition' => true,
-            //     // 'filter' => 'content = "' . $query . '"',
             // ])->getHits();
 
-            $searchResults = $index->search('"' . $query . '"', [ 
-                'attributesToHighlight' => ['content'],
+            // $searchResults = $index->search($query, [
+            $searchResults = $index->search('"' . $query . '"', [
+                // More results for grouping documents
+                'limit' => 100,
+
+
+                // Return highlighted text
+                'attributesToHighlight' => [
+                    'content'
+                ],
+
+
+                // Return snippets
+                'attributesToCrop' => [
+                    'content'
+                ],
+
+
+                'cropLength' => 80,
+
+
+                // Required for your page highlighting
                 'showMatchesPosition' => true,
+
+                 'matchingStrategy'=>'last'
+
             ])->getHits();
 
             $groupedResults = [];
@@ -2892,58 +2904,7 @@ public function deep_search(Request $request)
             }
             
             return response()->json($finalResults);
-            // $documents = Documents::select('id', 'name', 'type', 'storage', 'category', 'description', 'meta_tags', 'uploaded_method', 'document_preview', 'attributes')
-            //     ->orderBy('id', 'DESC')
-            //     ->where(function ($query) {
-            //         $query->where('is_indexed', '!=', 1)
-            //             ->orWhereNull('is_indexed');
-            //     })
-            //     ->where(function ($query) {
-            //         $query->where('is_archived', '!=', 1)
-            //             ->orWhereNull('is_archived');
-            //     })
-            //     ->with(['category' => function ($query) {
-            //         $query->select('id', 'category_name');
-            //     }]);
-
-            // if ($request->has('term') && $request->term) {
-            //     $term = $request->term;
-            //     $documents = $documents->where(function ($query) use ($term) {
-            //         $query->where('documents.name', 'LIKE', "%$term%")
-            //             ->orWhere('documents.description', 'LIKE', "%$term%")
-            //             ->orWhereRaw("JSON_CONTAINS(meta_tags, '" . json_encode($term) . "')")
-            //             ->orWhereRaw("EXISTS (SELECT 1 FROM JSON_TABLE(documents.attributes, '$[*]' COLUMNS (attribute_value VARCHAR(255) PATH '$.value')) AS attr_table WHERE attr_table.attribute_value LIKE ?)", ["%$term%"]);
-            //     });
-            // }
-
-            // $documents = $documents->get();
-
-            // foreach ($documents as $document) {
-            //     $created_data = DocumentAuditTrial::where('changed_source', $document->id)
-            //         ->where('operation', 'document added')
-            //         ->first();
-
-            //     if ($created_data) {
-            //         $created_by_details = UserDetails::where('user_id', $created_data->user)->first();
-            //         $created_by = $created_by_details ? $created_by_details->first_name . ' ' . $created_by_details->last_name : 'Unknown User';
-            //         $created_date = $created_data->date_time;
-            //     } else {
-            //         $created_by = 'Unknown User';
-            //         $created_date = 'Unknown Date';
-            //     }
-
-            //     $document->created_by = $created_by;
-            //     $document->created_date = $created_date;
-
-            //     if ($document->uploaded_method === 'ftp') {
-            //         $ftp_name = FTPAccounts::where('id', $document->storage)->value('name');
-            //         $document->storage = $ftp_name ?? 'Unknown FTP Storage';
-            //     }
-
-            //     $document->document_preview = $document->document_preview ? asset($document->document_preview) : asset('uploads/document_previews/default.png');
-            // }
-
-            // return response()->json($documents);
+           
         }
     } catch (\Exception $e) {
         return response()->json([

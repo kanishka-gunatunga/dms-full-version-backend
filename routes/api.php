@@ -19,6 +19,7 @@ use App\Http\Controllers\ADController;
 use App\Http\Controllers\AIController;
 use App\Http\Controllers\LicenseController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\CommonFunctionsController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -214,3 +215,9 @@ Route::get('/document-sign-history/{id}', [DocumentAPIController::class, 'docume
 Route::get('/document-sign-status/{id}', [DocumentAPIController::class, 'document_sign_status'])->middleware('auth:api');
 Route::post('/update-signature', [UserAPIController::class, 'update_signature'])->middleware('auth:api');
 Route::get('/get-signature', [UserAPIController::class, 'get_signature'])->middleware('auth:api');
+
+
+Route::get('/configure-meili', [
+    CommonFunctionsController::class,
+    'configureMeiliIndex'
+]);

@@ -772,7 +772,82 @@ public function get_file_text_content($type, $file_extension, $filePath)
         return $content;
     }
 }
+public function configureMeiliIndex()
+{
+    $client = new Client(
+        env('MEILISEARCH_HOST'),
+        env('MEILISEARCH_KEY')
+    );
 
+    $index = $client->index(
+        env('MEILISEARCH_INDEX')
+    );
+
+
+    $index->updateSettings([
+
+        // Fields to search
+        'searchableAttributes' => [
+            'content'
+        ],
+
+
+        // Fields for filtering
+        'filterableAttributes' => [
+            'sql_document',
+            'page'
+        ],
+
+
+        // Relevance ranking
+        'rankingRules' => [
+            'words',
+            'typo',
+            'proximity',
+            'attribute',
+            'sort',
+            'exactness'
+        ],
+
+
+        // Typo correction
+        'typoTolerance' => [
+            'enabled' => true,
+            'disableOnNumbers'=>true,
+
+            'minWordSizeForTypos' => [
+                'oneTypo' => 5,
+                'twoTypos' => 10
+            ]
+        ],
+
+        'separatorTokens' => [
+    ':',
+    ';',
+    '[',
+    ']'
+],
+
+'nonSeparatorTokens' => [
+    '-',
+    '/',
+    '_',
+    ',',
+    '.'
+],
+       
+
+        // Partial word matching
+        'prefixSearch' => 'indexingTime'
+
+    ]);
+
+
+    return response()->json([
+        'status'=>'success',
+        'message'=>'Meilisearch configured'
+    ]);
+}
 public function deleteDocumentFromIndex($documentId)
 {
     $client = new Client(env('MEILISEARCH_HOST'), env('MEILISEARCH_KEY'));
@@ -798,18 +873,56 @@ public function indexDocumentContent($documentId, $content)
 
     $meiliData = [];
     // $index->updateSettings([ // 'filterableAttributes' => ['content'], // ]);
-     $index->updateSettings([ 
-                    'filterableAttributes' => ['content','sql_document','page'],  
-                ]);
+    //  $index->updateSettings([ 
+    //                 'filterableAttributes' => ['content','sql_document','page'],  
+    //             ]);
+    // foreach ($content as $page) {
+    //     $pageNumber = $page['page'] ?? 1;
+    //     $pageText = $page['text'] ?? '';
+
+    //     $meiliData[] = [
+    //         'id' => $documentId . '-' . $pageNumber,
+    //         'sql_document' => $documentId,
+    //         'page' => $pageNumber,
+    //         'content' => $pageText
+    //     ];
+    // }
+
     foreach ($content as $page) {
+
         $pageNumber = $page['page'] ?? 1;
+
         $pageText = $page['text'] ?? '';
 
+
+        // Clean extracted PDF/OCR text
+        $pageText = trim(
+            preg_replace('/\s+/', ' ', $pageText)
+        );
+
+
+        if(empty($pageText)){
+            continue;
+        }
+
+
         $meiliData[] = [
+
+            // Unique page record
             'id' => $documentId . '-' . $pageNumber,
+
+
+            // Used to group results
             'sql_document' => $documentId,
+
+
+            // Used to open correct PDF page
             'page' => $pageNumber,
+
+
+            // Actual searchable content
             'content' => $pageText
+
         ];
     }
 

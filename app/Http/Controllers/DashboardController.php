@@ -95,7 +95,7 @@ class DashboardController extends Controller
                             'sector_name' => $doc->sector->sector_name ?? 'N/A',
                             'expiration_date' => $doc->expiration_date,
                           'days_to_expire' => $doc->expiration_date
-    ? (int) \Carbon\Carbon::now()->diffInDays(\Carbon\Carbon::parse($doc->expiration_date), false)
+    ? (int) \Carbon\Carbon::now()->diffInDays(\Carbon\Carbon::parse($doc->expiration_date))
     : null,
                         ];
                     });
@@ -274,9 +274,9 @@ public function user_dashboard_data(Request $request)
                         'sector_id' => $doc->sector->id ?? null,            // <-- added sector
                         'sector_name' => $doc->sector->sector_name ?? 'N/A',// <-- added sector
                         'expiration_date' => $doc->expiration_date,
-                        'days_to_expire' => (int) \Carbon\Carbon::now()->diffInDays(\Carbon\Carbon::parse($doc->expiration_date), false),
+                        'days_to_expire' => (int) \Carbon\Carbon::now()->diffInDays(\Carbon\Carbon::parse($doc->expiration_date)),
                     ];
-                });
+                })->values();
 
                 $pendingArchiveDocuments = $assigned_documents
                 ->load('sector')
