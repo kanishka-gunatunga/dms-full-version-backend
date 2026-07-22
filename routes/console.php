@@ -31,3 +31,7 @@ Schedule::call(function () {
 })->daily();
 Schedule::command('ad:sync-users')
     ->dailyAt('01:00');
+
+Schedule::command('backup:auto')
+    ->dailyAt('00:00')
+    ->withoutOverlapping();

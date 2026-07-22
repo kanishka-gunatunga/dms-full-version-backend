@@ -20,6 +20,7 @@ use App\Http\Controllers\AIController;
 use App\Http\Controllers\LicenseController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\CommonFunctionsController;
+use App\Http\Controllers\SystemBackupController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -155,6 +156,7 @@ Route::match(['get', 'post'],'/process-documents', [BulkUploadAPIController::cla
 Route::match(['get', 'post'],'/generate-excel-with-file-names', [BulkUploadAPIController::class, 'generate_excel_with_file_names'])->middleware('auth:api');
 
 
+
 //Settings Routes
 Route::post('/add-smtp', [SettingsAPIController::class, 'add_smtp'])->middleware('auth:api');
 Route::get('/all-smtps', [SettingsAPIController::class, 'all_smtps'])->middleware('auth:api');
@@ -163,6 +165,11 @@ Route::get('/delete-smtp/{id}', [SettingsAPIController::class, 'delete_smtp'])->
 Route::match(['get', 'post'],'/company-profile', [SettingsAPIController::class, 'company_profile']);
 Route::post('/company-profile-storage', [SettingsAPIController::class, 'company_profile_storage'])->middleware('auth:api');
 Route::get('/get-ad-connection', [SettingsAPIController::class, 'get_ad_connection']);
+
+// System Backup Routes
+Route::get('/system-backups', [SystemBackupController::class, 'index'])->middleware('auth:api');
+Route::post('/system-backups/generate', [SystemBackupController::class, 'generate'])->middleware('auth:api');
+Route::get('/system-backups/download/{id}', [SystemBackupController::class, 'download'])->middleware('auth:api');
 
 //FTP Routes
 Route::post('/add-ftp-account', [FTPAPIController::class, 'add_ftp_account'])->middleware('auth:api');
