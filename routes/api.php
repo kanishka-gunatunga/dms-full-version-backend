@@ -170,6 +170,7 @@ Route::get('/get-ad-connection', [SettingsAPIController::class, 'get_ad_connecti
 Route::get('/system-backups', [SystemBackupController::class, 'index'])->middleware('auth:api');
 Route::post('/system-backups/generate', [SystemBackupController::class, 'generate'])->middleware('auth:api');
 Route::get('/system-backups/download/{id}', [SystemBackupController::class, 'download'])->middleware('auth:api');
+Route::post('/system-backups/restore/{id}', [SystemBackupController::class, 'restore'])->middleware('auth:api');
 
 //FTP Routes
 Route::post('/add-ftp-account', [FTPAPIController::class, 'add_ftp_account'])->middleware('auth:api');
